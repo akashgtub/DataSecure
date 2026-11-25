@@ -14,10 +14,19 @@ DataSecure is an extensible, standalone security scanner that developers can int
   - Insecure shell command execution (`subprocess.run(shell=True)`, `os.system`).
   - Potential prompt injection sinks in system prompt construction.
   - Insecure TLS/SSL configurations (`verify=False`).
-- **Model Security Scanner:** Safe static inspection of model files (Pickle, PyTorch, SafeTensors, ONNX) without code execution.
+- **Model Security Scanner:** Safe static inspection of model files (Pickle, PyTorch, SafeTensors, Keras, ONNX) without code execution:
+  - Dangerous executable globals and callables (`os.system`, `subprocess.Popen`, `posix`, `builtins`).
+  - Native executables masquerading as AI models (PE `MZ` / ELF signatures).
+  - Keras Lambda layer serialized Python bytecode analysis.
+  - SafeTensors header, tensor metadata, and data offset bounds validation.
+  - ONNX external tensor path traversal detection (`../`).
+  - Malformed or corrupt model stream reporting.
+  - Format advisory for legacy pickle-based weights.
 - **LLM Safety Scanner:** Non-destructive test harness for prompt injection and leakage detection.
 - **Reporting:** Console, JSON, and HTML reports with actionable remediation advice.
 - **CI/CD Integration:** Ready for GitHub Actions and pipeline gating with configurable exit codes.
+
+> **Safety Notice:** DataSecure AI performs static model inspection and does not execute or load untrusted models. The absence of detected security indicators does not guarantee that a model is safe.
 
 ## Installation
 

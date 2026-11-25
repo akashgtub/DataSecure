@@ -8,6 +8,7 @@ from datasecure.configuration.config import DataSecureConfig
 from datasecure.core.models import Finding, ScanResult, ScanSummary
 from datasecure.scanners.base import BaseScanner
 from datasecure.scanners.dataset.scanner import DatasetScanner
+from datasecure.scanners.model.scanner import ModelScanner
 from datasecure.scanners.source_code.scanner import SourceCodeScanner
 
 
@@ -18,6 +19,7 @@ class ScanEngine:
         self.scanners: List[BaseScanner] = scanners or [
             DatasetScanner(),
             SourceCodeScanner(),
+            ModelScanner(),
         ]
 
     def register_scanner(self, scanner: BaseScanner) -> None:
