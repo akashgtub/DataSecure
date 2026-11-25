@@ -54,6 +54,7 @@ class DataSecureConfig(BaseModel):
             "dist",
             "build",
             ".eggs",
+            "tests",
         ]
     )
     exclude_files: List[str] = Field(

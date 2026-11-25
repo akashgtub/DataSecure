@@ -50,17 +50,16 @@ MODEL_OUTPUT_NAMES: Set[str] = {
 
 
 def _get_call_func_name(node: ast.Call) -> str:
-    """Resolve full function call name, e.g. 'torch.load' or 'pickle.loads'."""
-    if isinstance(node.func, ast.Name):
-        return node.func.id
-    elif isinstance(node.func, ast.Attribute):
-        value_name = ""
-        if isinstance(node.func.value, ast.Name):
-            value_name = node.func.value.id
-        elif isinstance(node.func.value, ast.Attribute):
-            value_name = f"{getattr(node.func.value.value, 'id', '')}.{node.func.value.attr}"
-        return f"{value_name}.{node.func.attr}" if value_name else node.func.attr
-    return ""
+    """Recursively resolve full attribute chain, e.g. 'tf.keras.models.load_model'."""
+    parts: List[str] = []
+    curr = node.func
+    while isinstance(curr, ast.Attribute):
+        parts.append(curr.attr)
+        curr = curr.value
+    if isinstance(curr, ast.Name):
+        parts.append(curr.id)
+    parts.reverse()
+    return ".".join(parts)
 
 
 def _get_kwarg(node: ast.Call, arg_name: str) -> Optional[ast.keyword]:
