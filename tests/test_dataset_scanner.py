@@ -283,6 +283,138 @@ def test_oversized_file_handling(scanner, temp_dir):
 
 
 # ---------------------------------------------------------------------------
+# Tests for Phase 2 Polish: JSON and JSONL Duplicate Detection Improvements
+# ---------------------------------------------------------------------------
+
+def test_json_array_duplicate_detection(scanner, temp_dir, default_config):
+    json_file = temp_dir / "records.json"
+    records = [
+        {"name": "Alice", "role": "engineer"},
+        {"name": "Bob", "role": "manager"},
+        {"name": "Alice", "role": "engineer"},  # Exact duplicate
+    ]
+    json_file.write_text(json.dumps(records), encoding="utf-8")
+
+    findings = scanner.scan(json_file, default_config)
+    dup_findings = [f for f in findings if f.id == "DS-DATA-007"]
+    assert len(dup_findings) == 1
+    assert "Found 1 duplicate record(s) in JSON array" in dup_findings[0].evidence
+    assert dup_findings[0].is_heuristic is True
+    # Ensure no raw record data in evidence
+    assert "Alice" not in dup_findings[0].evidence
+    assert "engineer" not in dup_findings[0].evidence
+
+
+def test_json_array_unique_records(scanner, temp_dir, default_config):
+    json_file = temp_dir / "unique.json"
+    records = [
+        {"name": "Alice", "role": "engineer"},
+        {"name": "Bob", "role": "manager"},
+    ]
+    json_file.write_text(json.dumps(records), encoding="utf-8")
+
+    findings = scanner.scan(json_file, default_config)
+    dup_findings = [f for f in findings if f.id == "DS-DATA-007"]
+    assert len(dup_findings) == 0
+
+
+def test_json_array_key_ordering_duplicates(scanner, temp_dir, default_config):
+    json_file = temp_dir / "reordered.json"
+    # Same logical records, different key ordering
+    json_content = '[{"name": "Alice", "age": 22}, {"age": 22, "name": "Alice"}]'
+    json_file.write_text(json_content, encoding="utf-8")
+
+    findings = scanner.scan(json_file, default_config)
+    dup_findings = [f for f in findings if f.id == "DS-DATA-007"]
+    assert len(dup_findings) == 1
+    assert "Found 1 duplicate record(s) in JSON array" in dup_findings[0].evidence
+
+
+def test_json_array_duplicate_disabled(scanner, temp_dir):
+    json_file = temp_dir / "records.json"
+    records = [{"item": 1}, {"item": 1}]
+    json_file.write_text(json.dumps(records), encoding="utf-8")
+
+    cfg = DataSecureConfig()
+    cfg.dataset.check_duplicates = False
+    findings = scanner.scan(json_file, cfg)
+    dup_findings = [f for f in findings if f.id == "DS-DATA-007"]
+    assert len(dup_findings) == 0
+
+
+def test_json_array_duplicate_sample_limit(scanner, temp_dir):
+    json_file = temp_dir / "records.json"
+    # First 2 are unique, duplicates occur after index 2
+    records = [{"id": 1}, {"id": 2}, {"id": 1}, {"id": 2}]
+    json_file.write_text(json.dumps(records), encoding="utf-8")
+
+    cfg = DataSecureConfig()
+    cfg.dataset.max_rows_to_sample = 2  # Only inspect first 2 items
+    findings = scanner.scan(json_file, cfg)
+    dup_findings = [f for f in findings if f.id == "DS-DATA-007"]
+    assert len(dup_findings) == 0
+
+
+def test_json_object_root_not_flagged_as_duplicate(scanner, temp_dir, default_config):
+    json_file = temp_dir / "object.json"
+    json_file.write_text(json.dumps({"app": "demo", "version": "1.0"}), encoding="utf-8")
+
+    findings = scanner.scan(json_file, default_config)
+    dup_findings = [f for f in findings if f.id == "DS-DATA-007"]
+    assert len(dup_findings) == 0
+
+
+def test_jsonl_key_ordering_duplicates(scanner, temp_dir, default_config):
+    jsonl_file = temp_dir / "reordered.jsonl"
+    with open(jsonl_file, "w", encoding="utf-8") as f:
+        f.write('{"name": "Alice", "age": 22}\n')
+        f.write('{"age": 22, "name": "Alice"}\n')
+
+    findings = scanner.scan(jsonl_file, default_config)
+    dup_findings = [f for f in findings if f.id == "DS-DATA-007"]
+    assert len(dup_findings) == 1
+    assert "Found 1 duplicate line(s)" in dup_findings[0].evidence
+    # Ensure evidence does not leak raw data
+    assert "Alice" not in dup_findings[0].evidence
+
+
+def test_jsonl_nested_object_normalization(scanner, temp_dir, default_config):
+    jsonl_file = temp_dir / "nested.jsonl"
+    with open(jsonl_file, "w", encoding="utf-8") as f:
+        # Different key ordering at top and nested levels
+        f.write('{"meta": {"tag": "ai", "env": "prod"}, "id": 100}\n')
+        f.write('{"id": 100, "meta": {"env": "prod", "tag": "ai"}}\n')
+
+    findings = scanner.scan(jsonl_file, default_config)
+    dup_findings = [f for f in findings if f.id == "DS-DATA-007"]
+    assert len(dup_findings) == 1
+
+
+def test_jsonl_unique_records(scanner, temp_dir, default_config):
+    jsonl_file = temp_dir / "unique.jsonl"
+    with open(jsonl_file, "w", encoding="utf-8") as f:
+        f.write('{"id": 1, "text": "hello"}\n')
+        f.write('{"id": 2, "text": "world"}\n')
+
+    findings = scanner.scan(jsonl_file, default_config)
+    dup_findings = [f for f in findings if f.id == "DS-DATA-007"]
+    assert len(dup_findings) == 0
+
+
+def test_jsonl_duplicate_disabled(scanner, temp_dir):
+    jsonl_file = temp_dir / "dups.jsonl"
+    with open(jsonl_file, "w", encoding="utf-8") as f:
+        f.write('{"key": "val"}\n')
+        f.write('{"key": "val"}\n')
+
+    cfg = DataSecureConfig()
+    cfg.dataset.check_duplicates = False
+    findings = scanner.scan(jsonl_file, cfg)
+    dup_findings = [f for f in findings if f.id == "DS-DATA-007"]
+    assert len(dup_findings) == 0
+
+
+# ---------------------------------------------------------------------------
 # CLI integration tests for `datasecure scan --dataset`
 # ---------------------------------------------------------------------------
 

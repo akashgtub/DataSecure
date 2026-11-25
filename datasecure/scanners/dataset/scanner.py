@@ -362,9 +362,14 @@ class DatasetScanner(BaseScanner):
                             findings_counter[malformed_id] = findings_counter.get(malformed_id, 0) + 1
                         continue
 
-                    # Duplicate check
+                    # Duplicate check with order-invariant normalization
                     if config.dataset.check_duplicates:
-                        line_hash = hashlib.sha256(line_stripped.encode("utf-8")).hexdigest()
+                        try:
+                            normalized_json = json.dumps(data, sort_keys=True, separators=(",", ":"))
+                            line_hash = hashlib.sha256(normalized_json.encode("utf-8")).hexdigest()
+                        except (TypeError, ValueError):
+                            line_hash = hashlib.sha256(line_stripped.encode("utf-8")).hexdigest()
+
                         if line_hash in seen_hashes:
                             duplicate_count += 1
                         else:
@@ -432,6 +437,40 @@ class DatasetScanner(BaseScanner):
                         is_heuristic=False,
                     )
                 ]
+
+            # Duplicate check for JSON datasets containing arrays of records
+            if config.dataset.check_duplicates and isinstance(parsed, list):
+                seen_hashes: Set[str] = set()
+                duplicate_count = 0
+                for item in parsed[: config.dataset.max_rows_to_sample]:
+                    try:
+                        normalized_item = json.dumps(item, sort_keys=True, separators=(",", ":"))
+                        item_hash = hashlib.sha256(normalized_item.encode("utf-8")).hexdigest()
+                    except (TypeError, ValueError):
+                        item_hash = hashlib.sha256(repr(item).encode("utf-8")).hexdigest()
+
+                    if item_hash in seen_hashes:
+                        duplicate_count += 1
+                    else:
+                        seen_hashes.add(item_hash)
+
+                if duplicate_count > 0:
+                    findings.append(
+                        Finding(
+                            id="DS-DATA-007",
+                            name="Duplicate Dataset Records Detected",
+                            severity=Severity.LOW,
+                            category=self.category,
+                            file_path=str(path),
+                            evidence=f"Found {duplicate_count} duplicate record(s) in JSON array",
+                            explanation=(
+                                "Duplicate records in JSON dataset array can bias AI model training, "
+                                "cause overfitting, and inflate validation metrics."
+                            ),
+                            remediation="Deduplicate JSON records prior to training.",
+                            is_heuristic=True,
+                        )
+                    )
 
             # Inspect strings extracted from JSON structure
             def extract_strings(obj: Any) -> List[str]:
