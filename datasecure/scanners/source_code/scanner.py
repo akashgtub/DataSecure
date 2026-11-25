@@ -91,6 +91,7 @@ class SourceCodeScanner(BaseScanner):
             ]
 
         visitor = SourceCodeSecurityVisitor(path, source_lines, config)
+        visitor.scan_line_based_secrets()
         visitor.visit(tree)
         return visitor.findings
 

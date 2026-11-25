@@ -305,6 +305,64 @@ def test_config_rule_toggles(source_scanner, temp_dir):
 # CLI Integration for Source Code Scanning
 # ---------------------------------------------------------------------------
 
+def test_comments_and_strings_not_treated_as_calls(source_scanner, temp_dir, default_config):
+    code_file = temp_dir / "commented_code.py"
+    code_file.write_text(
+        "# Note: do not use eval() or pickle.load() in production!\n"
+        "# subprocess.run('echo hello', shell=True)\n"
+        "help_text = 'Use torch.load() with caution'\n"
+        "doc = '''\n"
+        "Example of dangerous code:\n"
+        "    pickle.loads(b)\n"
+        "    exec(code)\n"
+        "'''\n",
+        encoding="utf-8",
+    )
+    findings = source_scanner.scan(code_file, default_config)
+    # Ensure NO call-based findings are produced from strings or comments!
+    call_rule_ids = {f.id for f in findings}
+    assert "DS-SRC-001" not in call_rule_ids
+    assert "DS-SRC-002" not in call_rule_ids
+    assert "DS-SRC-005" not in call_rule_ids
+    assert "DS-SRC-006" not in call_rule_ids
+    assert len(findings) == 0
+
+
+def test_commented_secrets_detected_and_redacted(source_scanner, temp_dir, default_config):
+    code_file = temp_dir / "commented_secret.py"
+    code_file.write_text(
+        "# TODO: replace temporary key sk-proj-1234567890abcdef1234567890 with vault secret\n"
+        "print('ready')\n",
+        encoding="utf-8",
+    )
+    findings = source_scanner.scan(code_file, default_config)
+    secret_findings = [f for f in findings if f.id == "DS-SRC-004"]
+    assert len(secret_findings) == 1
+    assert secret_findings[0].line_number == 1
+    assert "sk-" in secret_findings[0].evidence
+    assert "***" in secret_findings[0].evidence
+    assert "1234567890abcdef1234567890" not in secret_findings[0].evidence
+
+
+def test_subprocess_argument_variations(source_scanner, temp_dir, default_config):
+    code_file = temp_dir / "subproc_variations.py"
+    code_file.write_text(
+        "import subprocess\n"
+        "p1 = subprocess.Popen('ls -la', shell=True)\n"
+        "p2 = subprocess.call(['git', 'status'], shell=False)\n"
+        "p3 = subprocess.check_output(cmd, shell=True)\n",
+        encoding="utf-8",
+    )
+    findings = source_scanner.scan(code_file, default_config)
+    shell_findings = [f for f in findings if f.id == "DS-SRC-006"]
+    # Popen with shell=True and check_output with shell=True should be flagged
+    assert len(shell_findings) == 2
+    lines = [f.line_number for f in shell_findings]
+    assert 2 in lines
+    assert 4 in lines
+    assert 3 not in lines  # line 3 is shell=False
+
+
 def test_cli_scan_source_code_file(temp_dir):
     vuln_py = temp_dir / "app_vuln.py"
     vuln_py.write_text(
