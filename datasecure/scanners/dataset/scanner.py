@@ -239,7 +239,7 @@ class DatasetScanner(BaseScanner):
         seen_hashes: Set[str] = set()
         duplicate_count = 0
         expected_cols: Optional[int] = None
-
+#try to open the file
         try:
             with open(path, "r", encoding="utf-8", errors="replace", newline="") as f:
                 reader = csv.reader(f, delimiter=delimiter)
